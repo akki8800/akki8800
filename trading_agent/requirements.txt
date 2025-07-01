@@ -1,0 +1,12 @@
+# Project Requirements
+
+# Core data manipulation
+pandas>=1.0.0
+numpy>=1.18.0
+
+# For a production version, you would add libraries for:
+# - Connecting to exchange APIs (e.g., python-binance, ccxt)
+# - Advanced technical analysis (e.g., ta, talib-wrapper)
+# - Plotting/Visualization (e.g., matplotlib, plotly)
+# - Database interaction (e.g., sqlalchemy, psycopg2-binary)
+# - Logging (e.g., loguru)
