@@ -1,13 +1,8 @@
 # trading_agent/main.py
 
 from core.agent import TradingAgent
-
-# Configuration
-SYMBOLS_TO_TRADE = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT']
-# Common time frames: '1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'
-TIME_FRAME = '1h' # Time frame for candlestick data
-INITIAL_CAPITAL = 10000.00  # Starting capital for the agent
-RUN_INTERVAL_SECONDS = 60 * 60 # Check for signals every hour
+from config.config import Config
+import sys
 
 # "Trading in the Zone" Reminder for the User/Developer:
 # The agent operates based on predefined rules and probabilities.
@@ -16,38 +11,88 @@ RUN_INTERVAL_SECONDS = 60 * 60 # Check for signals every hour
 
 def run_trading_agent():
     """
-    Initializes and runs the trading agent.
+    Initializes and runs the advanced cryptocurrency trading agent.
     """
-    print("=============================================")
-    print("===      Crypto Trading Agent Prototype   ===")
-    print("=============================================")
-    print(f"Monitored Symbols: {', '.join(SYMBOLS_TO_TRADE)}")
-    print(f"Trading Time Frame: {TIME_FRAME}")
-    print(f"Initial Capital: ${INITIAL_CAPITAL:.2f}")
-    print(f"Signal Check Interval: {RUN_INTERVAL_SECONDS // 60} minutes")
-    print("---")
-    print("Disclaimer: This is a prototype for educational purposes.")
-    print("It uses SIMULATED data and SIMULATED trading. DO NOT USE FOR REAL TRADING.")
-    print("---")
-
+    print("\n" + "=" * 70)
+    print("  ADVANCED CRYPTOCURRENCY TRADING BOT")
+    print("  Powered by Machine Learning & Sentiment Analysis")
+    print("=" * 70)
+    print(f"\n📊 Configuration:")
+    print(f"   Monitored Symbols: {', '.join(Config.SYMBOLS_TO_TRADE)}")
+    print(f"   Trading Time Frame: {Config.TIME_FRAME}")
+    print(f"   Initial Capital: ${Config.INITIAL_CAPITAL:.2f}")
+    print(f"   Signal Check Interval: {Config.RUN_INTERVAL_SECONDS // 60} minutes")
+    print(f"   Exchange: {Config.EXCHANGE_ID} ({'TESTNET' if Config.TESTNET else 'LIVE'})")
+    print(f"   ML Model: {Config.ML_MODEL_TYPE.upper()}")
+    print(f"   Risk per Trade: {Config.RISK_PER_TRADE * 100}%")
+    print(f"   Max Positions: {Config.MAX_POSITIONS}")
+    
+    print(f"\n🔧 Features:")
+    print(f"   ✓ Real-time market data fetching")
+    print(f"   ✓ Technical indicator analysis (RSI, MACD, Bollinger Bands, etc.)")
+    print(f"   ✓ Machine Learning price prediction")
+    print(f"   ✓ News sentiment analysis")
+    print(f"   ✓ Multi-factor signal generation")
+    print(f"   ✓ Automated risk management")
+    print(f"   ✓ Stop-loss & take-profit execution")
+    
+    print(f"\n⚠️  DISCLAIMER:")
+    print(f"   This is an automated trading system. Use at your own risk.")
+    if Config.TESTNET:
+        print(f"   Currently running in TESTNET/SIMULATION mode.")
+        print(f"   No real funds are at risk.")
+    else:
+        print(f"   ⚠️  LIVE TRADING MODE - Real funds are at risk!")
+        print(f"   Ensure you understand the risks before proceeding.")
+        
+        response = input(f"\n   Continue with LIVE trading? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            print(f"   Exiting...")
+            sys.exit(0)
+    
+    print("=" * 70)
+    
+    # Validate configuration
+    try:
+        Config.validate()
+    except ValueError as e:
+        print(f"\n❌ Configuration Error: {e}")
+        print(f"   Please check your configuration and environment variables.")
+        sys.exit(1)
+    
     # Initialize the agent
-    agent = TradingAgent(
-        symbols=SYMBOLS_TO_TRADE,
-        time_frame=TIME_FRAME,
-        capital=INITIAL_CAPITAL
-    )
+    try:
+        agent = TradingAgent(
+            symbols=Config.SYMBOLS_TO_TRADE,
+            time_frame=Config.TIME_FRAME,
+            capital=Config.INITIAL_CAPITAL,
+            use_ml=True,
+            use_sentiment=Config.USE_SENTIMENT,
+            exchange_id=Config.EXCHANGE_ID,
+            testnet=Config.TESTNET
+        )
+    except Exception as e:
+        print(f"\n❌ Error initializing agent: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
     # Run the agent's main loop
-    # The agent will periodically fetch data, check for signals, and manage trades.
     try:
-        agent.run(interval_seconds=RUN_INTERVAL_SECONDS)
+        agent.run(interval_seconds=Config.RUN_INTERVAL_SECONDS)
     except Exception as e:
-        print(f"An unexpected error occurred in the agent's main loop: {e}")
-        # Consider logging the error to a file in a real application
+        print(f"\n❌ Unexpected error in agent's main loop: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        print("\nTrading Agent execution finished or was interrupted.")
-        print("Final portfolio status:")
-        agent.display_portfolio() # Display final status
+        print("\n" + "=" * 70)
+        print("  TRADING AGENT EXECUTION COMPLETED")
+        print("=" * 70)
+        print("\n📊 Final Portfolio Status:")
+        agent.display_portfolio()
+        print("\n" + "=" * 70)
+        print("  Thank you for using the Advanced Trading Bot!")
+        print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":

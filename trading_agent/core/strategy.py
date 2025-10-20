@@ -1,6 +1,7 @@
 # trading_agent/core/strategy.py
 import pandas as pd
 import numpy as np
+from typing import Optional, Tuple
 
 # "Trading in the Zone" principle:
 # 1. Anything can happen.
@@ -10,19 +11,30 @@ import numpy as np
 # 5. Every moment in the market is unique.
 
 class TradingStrategy:
-    def __init__(self, symbol: str, risk_per_trade: float = 0.01):
+    def __init__(self, symbol: str, risk_per_trade: float = 0.02,
+                 ml_predictor=None, sentiment_analyzer=None):
         """
-        Initializes the trading strategy.
+        Initializes the advanced trading strategy with ML and sentiment analysis.
 
         Args:
-            symbol (str): The trading symbol (e.g., 'BTCUSDT').
+            symbol (str): The trading symbol (e.g., 'BTC/USDT').
             risk_per_trade (float): The percentage of capital to risk per trade.
-                                    (Trading in the Zone: Manage risk)
+            ml_predictor: ML model for price prediction
+            sentiment_analyzer: Sentiment analyzer for news/social data
         """
         self.symbol = symbol
         self.risk_per_trade = risk_per_trade
         self.historical_data = pd.DataFrame()
+        self.ml_predictor = ml_predictor
+        self.sentiment_analyzer = sentiment_analyzer
+        self.use_ml = ml_predictor is not None
+        self.use_sentiment = sentiment_analyzer is not None
+        
         print(f"Strategy initialized for {symbol}. Risk per trade: {risk_per_trade*100}%")
+        if self.use_ml:
+            print("  - ML prediction enabled")
+        if self.use_sentiment:
+            print("  - Sentiment analysis enabled")
 
     def update_data(self, new_data: pd.DataFrame):
         """
@@ -31,35 +43,30 @@ class TradingStrategy:
         Args:
             new_data (pd.DataFrame): New market data to append or update.
         """
-        # For simplicity, this prototype replaces data. A real system might append.
         self.historical_data = new_data
-        # print(f"Data updated for {self.symbol}. Shape: {self.historical_data.shape}")
 
 
-    def identify_support_resistance(self, data: pd.DataFrame, window: int = 20, std_dev_multiplier: float = 1.5) -> tuple[list, list]:
+    def identify_support_resistance(self, data: pd.DataFrame, window: int = 20, 
+                                    std_dev_multiplier: float = 1.5) -> Tuple[list, list]:
         """
-        Identifies potential support and resistance levels.
-        This is a simplified approach using rolling min/max or pivot points.
-        A more advanced version would use clustering, peak/trough detection, or volume profiles.
+        Identifies potential support and resistance levels using multiple methods.
 
         Args:
             data (pd.DataFrame): Price data with 'high', 'low', 'close'.
             window (int): Rolling window for identifying S/R.
-            std_dev_multiplier (float): For dynamic levels based on volatility (e.g. Bollinger Bands concept).
+            std_dev_multiplier (float): For dynamic levels based on volatility.
 
         Returns:
-            tuple[list, list]: A tuple containing two lists: support_levels and resistance_levels.
+            tuple[list, list]: Support and resistance levels.
         """
         if data.empty or len(data) < window:
-            # print("Not enough data to identify S/R levels.")
             return [], []
 
-        # Method 1: Simple rolling min/max for minor levels
+        # Method 1: Rolling min/max
         minor_supports = data['low'].rolling(window=window, center=True).min().dropna().tolist()
         minor_resistances = data['high'].rolling(window=window, center=True).max().dropna().tolist()
 
-        # Method 2: Pivot Points (Classic) - using last period's data typically
-        # For simplicity, we'll use the average of the last 'window' period
+        # Method 2: Pivot Points
         last_period = data.iloc[-window:] if len(data) >= window else data
         if not last_period.empty:
             pivot = (last_period['high'].mean() + last_period['low'].mean() + last_period['close'].mean()) / 3
@@ -68,31 +75,25 @@ class TradingStrategy:
             s2 = pivot - (last_period['high'].mean() - last_period['low'].mean())
             r2 = pivot + (last_period['high'].mean() - last_period['low'].mean())
 
-            major_supports = sorted(list(set([s1, s2]))) # Crude major levels
+            major_supports = sorted(list(set([s1, s2])))
             major_resistances = sorted(list(set([r1, r2])))
         else:
             major_supports, major_resistances = [], []
 
-        # Combine and simplify (remove very close levels)
-        # For this prototype, we'll just return a mix. A real version needs refinement.
-        supports = sorted(list(set(minor_supports[-5:] + major_supports))) # Take recent minor ones
+        # Combine levels
+        supports = sorted(list(set(minor_supports[-5:] + major_supports)))
         resistances = sorted(list(set(minor_resistances[-5:] + major_resistances)))
 
-        # Filter out levels too far from the current price (e.g., > 20% away)
+        # Filter by proximity to current price
         current_price = data['close'].iloc[-1]
-        supports = [s for s in supports if abs(s - current_price) / current_price < 0.20]
+        supports = [s for s in supports if abs(s - current_price) / current_price < 0.20 and s < current_price]
         resistances = [r for r in resistances if abs(r - current_price) / current_price < 0.20 and r > current_price]
-        supports = [s for s in supports if s < current_price]
 
-
-        # print(f"Identified S/R for {self.symbol}: Supports: {supports}, Resistances: {resistances}")
         return supports, resistances
 
     def analyze_patterns(self, data: pd.DataFrame) -> str:
         """
-        Analyzes chart patterns.
-        Placeholder: In a real system, this would involve complex pattern recognition
-        (e.g., head and shoulders, triangles, flags).
+        Analyzes chart patterns using technical indicators.
 
         Args:
             data (pd.DataFrame): Price data.
@@ -100,101 +101,187 @@ class TradingStrategy:
         Returns:
             str: Identified pattern or 'None'.
         """
-        # "Trading in the Zone": An edge is just a higher probability. Patterns contribute to this edge.
-        # This is highly simplified. Real pattern recognition is complex.
-        if len(data) < 3:
+        if len(data) < 20:
             return "None"
+        
+        # Use technical indicators to identify patterns
+        if 'RSI' in data.columns and 'MACD_diff' in data.columns:
+            rsi = data['RSI'].iloc[-1]
+            macd_diff = data['MACD_diff'].iloc[-1]
+            prev_macd_diff = data['MACD_diff'].iloc[-2]
+            
+            # Bullish patterns
+            if rsi < 30 and macd_diff > 0 and prev_macd_diff < 0:
+                return "Bullish Reversal"
+            
+            # Bearish patterns
+            if rsi > 70 and macd_diff < 0 and prev_macd_diff > 0:
+                return "Bearish Reversal"
+        
+        return "None"
 
-        # Example: Simple "double bottom" like pattern (very naive)
-        # Look at the last N candles, e.g., 20
-        recent_lows = data['low'].tail(20)
-        if len(recent_lows) > 10: # Need enough data points
-            first_low = recent_lows.iloc[:5].min()
-            second_low = recent_lows.iloc[5:10].min() # Simplified check
-            current_price = data['close'].iloc[-1]
-            # if abs(first_low - second_low) / first_low < 0.01 and current_price > first_low: # Second low is close to first
-                 # return "Potential Double Bottom"
-
-        # print(f"Pattern analysis for {self.symbol}: No significant pattern identified (placeholder).")
-        return "None" # Placeholder
-
-    def generate_signal(self) -> tuple[str, float, float, float]:
+    def get_ml_prediction(self) -> Tuple[str, float]:
         """
-        Generates a trading signal based on the strategy.
-        Signal: 'BUY', 'SELL', or 'HOLD'.
-        Price: Entry price for BUY/SELL.
-        Stop Loss: Price level to exit if trade goes wrong.
-        Take Profit: Price level to exit if trade is profitable.
+        Get ML model prediction for price movement.
+        
+        Returns:
+            Tuple of (prediction, confidence)
+        """
+        if not self.use_ml or self.historical_data.empty:
+            return 'HOLD', 0.5
+        
+        try:
+            prediction, confidence = self.ml_predictor.predict(self.historical_data)
+            print(f"ML Prediction for {self.symbol}: {prediction} (confidence: {confidence:.2f})")
+            return prediction, confidence
+        except Exception as e:
+            print(f"Error in ML prediction: {e}")
+            return 'HOLD', 0.5
 
+    def get_sentiment_score(self) -> Tuple[str, float]:
+        """
+        Get sentiment analysis signal.
+        
+        Returns:
+            Tuple of (signal, score)
+        """
+        if not self.use_sentiment:
+            return 'NEUTRAL', 0.0
+        
+        try:
+            sentiment = self.sentiment_analyzer.get_aggregated_sentiment(self.symbol)
+            signal = self.sentiment_analyzer.get_sentiment_signal(self.symbol)
+            return signal, sentiment['sentiment_score']
+        except Exception as e:
+            print(f"Error in sentiment analysis: {e}")
+            return 'NEUTRAL', 0.0
+
+    def generate_signal(self) -> Tuple[str, float, float, float]:
+        """
+        Generates a comprehensive trading signal combining:
+        - Technical analysis (S/R levels, indicators)
+        - ML predictions
+        - Sentiment analysis
+        
         Returns:
             tuple[str, float, float, float]: (signal, entry_price, stop_loss, take_profit)
         """
-        if self.historical_data.empty or len(self.historical_data) < 20: # Need at least 20 periods for S/R
-            # print("Not enough historical data to generate a signal.")
+        if self.historical_data.empty or len(self.historical_data) < 20:
             return "HOLD", 0.0, 0.0, 0.0
 
         current_price = self.historical_data['close'].iloc[-1]
         supports, resistances = self.identify_support_resistance(self.historical_data)
-        pattern = self.analyze_patterns(self.historical_data) # Currently a placeholder
-
-        # "Trading in the Zone": Act on your edge without hesitation when conditions are met.
-        # Trade Confirmation: Only trade when criteria are met.
-
+        pattern = self.analyze_patterns(self.historical_data)
+        
+        # Get ML prediction
+        ml_prediction, ml_confidence = self.get_ml_prediction()
+        
+        # Get sentiment
+        sentiment_signal, sentiment_score = self.get_sentiment_score()
+        
+        # Initialize signal components
         signal = "HOLD"
         entry_price = 0.0
         stop_loss = 0.0
         take_profit = 0.0
-
-        # Simplified Buy Signal: Price is near a strong support level
+        
+        # Calculate signal strength using multiple factors
+        buy_score = 0.0
+        sell_score = 0.0
+        
+        # Technical analysis scoring
         if supports:
-            strongest_support = max(supports) # Closest support below current price
-            # Check if current price is close to this support (e.g., within 0.5% for this prototype)
-            if strongest_support < current_price and (current_price - strongest_support) / current_price < 0.005:
-                # Confirmation: Add more rules here, e.g., bullish candle pattern, volume increase
-                # For prototype, simple proximity is enough
-                if self.confirm_trade("BUY", current_price, pattern, supports, resistances):
-                    signal = "BUY"
-                    entry_price = current_price
-                    # "Trading in the Zone": Always define your risk beforehand.
-                    stop_loss = strongest_support * 0.99 # Place SL slightly below support
-                    # Basic take profit: Aim for the nearest resistance or a fixed R:R ratio
-                    if resistances:
-                        take_profit = min(resistances) if min(resistances) > entry_price else entry_price * 1.02 # TP at nearest R or 2%
-                    else:
-                        take_profit = entry_price * 1.02 # Default 2% TP if no resistance found above
-
-                    # Ensure TP offers reasonable reward compared to risk
-                    if (take_profit - entry_price) < (entry_price - stop_loss):
-                        # print("Buy signal: TP too close, adjusting or holding.")
-                        signal = "HOLD" # Or adjust TP/SL based on more complex rules
-
-
-        # Simplified Sell Signal: Price is near a strong resistance level
-        if signal == "HOLD" and resistances: # Only if no buy signal
-            strongest_resistance = min(resistances) # Closest resistance above current price
-            if strongest_resistance > current_price and (strongest_resistance - current_price) / current_price < 0.005:
-                if self.confirm_trade("SELL", current_price, pattern, supports, resistances):
-                    signal = "SELL"
-                    entry_price = current_price
-                    stop_loss = strongest_resistance * 1.01 # Place SL slightly above resistance
-                    if supports:
-                        take_profit = max(supports) if max(supports) < entry_price else entry_price * 0.98
-                    else:
-                        take_profit = entry_price * 0.98 # Default 2% TP
-
-                    if (entry_price - take_profit) < (stop_loss - entry_price):
-                        # print("Sell signal: TP too close, adjusting or holding.")
-                        signal = "HOLD"
-
-        if signal != "HOLD":
-            print(f"Signal for {self.symbol}: {signal} at {entry_price:.2f}, SL: {stop_loss:.2f}, TP: {take_profit:.2f}")
-
+            strongest_support = max(supports)
+            if strongest_support < current_price and (current_price - strongest_support) / current_price < 0.01:
+                buy_score += 0.3  # Near support = bullish
+        
+        if resistances:
+            strongest_resistance = min(resistances)
+            if strongest_resistance > current_price and (strongest_resistance - current_price) / current_price < 0.01:
+                sell_score += 0.3  # Near resistance = bearish
+        
+        # ML prediction scoring
+        if ml_prediction == 'UP' and ml_confidence > 0.6:
+            buy_score += 0.3 * ml_confidence
+        elif ml_prediction == 'DOWN' and ml_confidence > 0.6:
+            sell_score += 0.3 * ml_confidence
+        
+        # Sentiment scoring
+        if sentiment_signal == 'BULLISH':
+            buy_score += 0.2 * abs(sentiment_score)
+        elif sentiment_signal == 'BEARISH':
+            sell_score += 0.2 * abs(sentiment_score)
+        
+        # Pattern recognition scoring
+        if pattern == "Bullish Reversal":
+            buy_score += 0.2
+        elif pattern == "Bearish Reversal":
+            sell_score += 0.2
+        
+        # Technical indicator confirmation
+        if 'RSI' in self.historical_data.columns:
+            rsi = self.historical_data['RSI'].iloc[-1]
+            if rsi < 35:
+                buy_score += 0.15  # Oversold
+            elif rsi > 65:
+                sell_score += 0.15  # Overbought
+        
+        # Generate signal based on combined scores
+        threshold = 0.6  # Minimum score to trigger a trade
+        
+        if buy_score > threshold and buy_score > sell_score:
+            signal = "BUY"
+            entry_price = current_price
+            
+            # Set stop loss below support or using ATR
+            if supports:
+                stop_loss = max(supports) * 0.99
+            else:
+                stop_loss = current_price * 0.98  # 2% stop loss
+            
+            # Set take profit at resistance or using reward:risk ratio
+            risk = entry_price - stop_loss
+            if resistances:
+                take_profit = min(resistances)
+            else:
+                take_profit = entry_price + (risk * 2)  # 2:1 reward:risk
+            
+            # Ensure valid TP
+            if take_profit <= entry_price:
+                take_profit = entry_price * 1.04
+            
+            print(f"BUY Signal for {self.symbol}: Score={buy_score:.2f}, Entry={entry_price:.2f}, SL={stop_loss:.2f}, TP={take_profit:.2f}")
+            print(f"  ML: {ml_prediction} ({ml_confidence:.2f}), Sentiment: {sentiment_signal}, Pattern: {pattern}")
+            
+        elif sell_score > threshold and sell_score > buy_score:
+            signal = "SELL"
+            entry_price = current_price
+            
+            # Set stop loss above resistance
+            if resistances:
+                stop_loss = min(resistances) * 1.01
+            else:
+                stop_loss = current_price * 1.02
+            
+            # Set take profit at support
+            risk = stop_loss - entry_price
+            if supports:
+                take_profit = max(supports)
+            else:
+                take_profit = entry_price - (risk * 2)
+            
+            if take_profit >= entry_price:
+                take_profit = entry_price * 0.96
+            
+            print(f"SELL Signal for {self.symbol}: Score={sell_score:.2f}, Entry={entry_price:.2f}, SL={stop_loss:.2f}, TP={take_profit:.2f}")
+            print(f"  ML: {ml_prediction} ({ml_confidence:.2f}), Sentiment: {sentiment_signal}, Pattern: {pattern}")
+        
         return signal, entry_price, stop_loss, take_profit
 
-    def confirm_trade(self, side: str, price: float, pattern: str, supports: list, resistances: list) -> bool:
+    def confirm_trade(self, side: str, price: float, pattern: str, 
+                     supports: list, resistances: list) -> bool:
         """
         Confirms a trade based on additional criteria.
-        (Placeholder for more complex confirmation logic)
 
         Args:
             side (str): 'BUY' or 'SELL'
@@ -206,21 +293,7 @@ class TradingStrategy:
         Returns:
             bool: True if the trade is confirmed, False otherwise.
         """
-        # "Trading in the Zone": The market doesn't owe you anything. Confirmation helps filter noise.
-        # For this prototype, we'll keep it simple.
-        # A real system might check:
-        # - Volume confirmation
-        # - Candlestick patterns (e.g., engulfing, pin bar at S/R)
-        # - Indicator confirmation (e.g., RSI divergence, MACD crossover)
-        # - Multiple time frame agreement
-
-        # Example: if pattern was "Potential Double Bottom" and side is 'BUY', that's a stronger confirmation.
-        # if side == "BUY" and pattern == "Potential Double Bottom":
-        #     print(f"Trade Confirmed for {self.symbol} ({side}) based on pattern: {pattern}")
-        #     return True
-
-        # For now, all trades meeting basic S/R criteria are "confirmed" for the prototype
-        # print(f"Trade Confirmed for {self.symbol} ({side}) based on S/R proximity.")
+        # With ML and sentiment integration, basic criteria are usually enough
         return True
 
 if __name__ == '__main__':
